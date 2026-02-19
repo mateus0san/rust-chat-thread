@@ -1,5 +1,5 @@
 use std::{
-    io::{self, BufReader, Read, Write},
+    io::{self, BufRead, BufReader, Read, Write},
     net::TcpStream,
 };
 
@@ -43,9 +43,14 @@ impl Client {
             .write_all("Type your username (max 16 characters): ".as_bytes())?;
 
         const MAX_USERNAME_LEN: usize = 16;
-        let mut username = Vec::with_capacity(MAX_USERNAME_LEN);
+        let mut username = String::with_capacity(MAX_USERNAME_LEN);
 
-        self.reader.read_exact(&mut username)?;
+        self.reader
+            .by_ref()
+            .take(MAX_USERNAME_LEN as u64)
+            .read_line(&mut username)?;
+
+        self.username = username.trim().to_string();
 
         Ok(())
     }
@@ -57,6 +62,12 @@ impl Client {
             reader,
             ip,
         }
+    }
+
+    pub fn write(&mut self, msg: &str) -> Result<(), ClientError> {
+        self.writer.write_all(msg.as_bytes())?;
+
+        Ok(())
     }
 
     pub fn username(&self) -> &str {

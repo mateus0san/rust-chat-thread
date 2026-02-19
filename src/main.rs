@@ -1,7 +1,12 @@
 use std::{
+    collections,
     net::{SocketAddr, TcpListener, TcpStream},
     thread,
 };
+
+struct Server {
+    clients: collections::HashMap<String, chat::Client>,
+}
 
 fn main() {
     let (listener, server_address) = start_server();
@@ -32,52 +37,28 @@ fn run_server(listener: TcpListener) {
             }
         };
         thread::spawn(move || {
-            handle_client(stream);
+            let Ok(client) = handle_client(stream) else {
+                return;
+            };
         });
     }
 }
 
-fn handle_client(stream: TcpStream) {
-    let client = match chat::Client::try_new(stream) {
-        Ok(client) => client,
+fn handle_client(stream: TcpStream) -> Result<chat::Client, ()> {
+    match chat::Client::try_new(stream) {
+        Ok(client) => {
+            eprintln!("New client at the address {}", client.ip());
+            Ok(client)
+        }
         Err(chat::ClientError::IO(e)) => {
-            eprintln!("ERROR: from client_handle {e}");
-            return;
+            eprintln!("ERROR: IO error from client_handle {e}");
+            Err(())
         }
         Err(e) => {
             eprintln!("ERROR: from client_handle {e:#?}");
-            return;
+            Err(())
         }
-    };
-
-    eprintln!(
-        "New client {} at the address {}",
-        client.username(),
-        client.ip()
-    );
-
-    // const MAX_BYTES: usize = 120;
-    // let mut message = String::with_capacity(MAX_BYTES);
-
-    // loop {
-    //     match buffer.read_line(&mut message) {
-    //         Ok(0) => {
-    //             eprintln!("INFO: {} buffer returned EOF", client.ip);
-    //             break;
-    //         }
-    //         Ok(b) => eprintln!(
-    //             "INFO: Number of bytes read from {}: {b}:{}",
-    //             client.ip,
-    //             message.trim()
-    //         ),
-    //         Err(err) => {
-    //             eprintln!("ERROR: {err}");
-    //             break;
-    //         }
-    //     }
-
-    //     message.clear();
-    // }
+    }
 }
 
 #[cfg(test)]
