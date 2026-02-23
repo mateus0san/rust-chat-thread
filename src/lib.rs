@@ -24,7 +24,7 @@ impl Client {
     pub fn try_new(stream: TcpStream) -> io::Result<Client> {
         let ip = stream.peer_addr()?;
 
-        stream.set_read_timeout(Some(Duration::from_secs(15)))?;
+        stream.set_read_timeout(Some(Duration::from_mins(5)))?;
         stream.set_write_timeout(Some(Duration::from_secs(15)))?;
 
         Ok(Client::new(stream, ip))
