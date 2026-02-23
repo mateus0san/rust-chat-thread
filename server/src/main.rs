@@ -1,12 +1,13 @@
 use std::{
-    collections::{HashMap, hash_map::Entry},
+    collections::{hash_map::Entry, HashMap},
     io,
     net::{SocketAddr, TcpListener, TcpStream},
     sync::mpsc::{self, Receiver},
     thread,
 };
 
-use chat::{Client, ConnectionEnd, Message, Reader};
+use sbmp::FrameReader;
+use server::{Client, ConnectionEnd, Message};
 
 fn main() {
     let listener = TcpListener::bind("0.0.0.0:1337").expect("ERROR: could not start the server");
@@ -78,7 +79,7 @@ fn handle_connection(
         return Ok(ConnectionEnd::ReceiverDropped);
     };
 
-    let mut buffer = Reader::new(reader);
+    let mut buffer = FrameReader::new(reader);
 
     let result = loop {
         let content = match buffer.read_frame() {

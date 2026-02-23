@@ -1,4 +1,4 @@
-use std::io::{self, BufReader, Read, Write};
+use std::io::{self, Write};
 use std::net::{SocketAddr, TcpStream};
 use std::time::Duration;
 
@@ -46,42 +46,4 @@ impl Client {
 pub enum ConnectionEnd {
     Normal,
     ReceiverDropped,
-}
-
-pub struct Reader {
-    reader: BufReader<TcpStream>,
-}
-
-impl Reader {
-    pub fn new(stream: TcpStream) -> Self {
-        Self {
-            reader: BufReader::new(stream),
-        }
-    }
-
-    pub fn read_frame(&mut self) -> io::Result<Vec<u8>> {
-        let len = self.read_header()?;
-
-        if len > 8 * 1024 {
-            return Err(io::Error::new(
-                io::ErrorKind::InvalidData,
-                "Frame too large",
-            ));
-        }
-
-        let mut frame = vec![0u8; len as usize];
-
-        self.reader.read_exact(&mut frame)?;
-
-        Ok(frame)
-    }
-
-    fn read_header(&mut self) -> io::Result<u32> {
-        // reading 4 bytes, content size
-        let mut header = [0u8; 4];
-
-        self.reader.read_exact(&mut header)?;
-
-        Ok(u32::from_be_bytes(header))
-    }
 }

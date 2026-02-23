@@ -3,5 +3,16 @@
 version = 4
 
 [[package]]
-name = "chat"
+name = "client"
 version = "0.1.0"
+
+[[package]]
+name = "sbmp"
+version = "0.1.0"
+
+[[package]]
+name = "server"
+version = "0.1.0"
+dependencies = [
+ "sbmp",
+]
