@@ -4,107 +4,73 @@
 // | version    | type       | length     | payload        |
 // +------------+------------+------------+----------------+
 
-pub mod read;
-pub mod write;
+pub mod sbmp;
 
-pub mod collections {
-    use std::io;
+use crate::sbmp::{ContentType, Frame, Header, SBMPError};
+use std::io::{Read, Write};
 
-    pub const PROTOCOL_VERSION: u8 = 1;
+pub mod write {
+    use super::*;
 
-    pub struct Frame {
-        pub header: Header,
-        pub payload: Vec<u8>,
+    pub struct FrameWriter<W: Write> {
+        writer: W,
     }
 
-    impl Frame {
-        fn new(header: Header, payload: Vec<u8>) -> Self {
-            Self { header, payload }
+    impl<W: Write> FrameWriter<W> {
+        pub fn new(stream: W) -> Self {
+            Self { writer: stream }
         }
 
-        pub fn try_new(header: Header, payload: Vec<u8>) -> Result<Self, SBMPError> {
-            if header.content_length == payload.len() {
-                Ok(Frame::new(header, payload))
-            } else {
-                Err(SBMPError::ContentLenDiff)
-            }
-        }
-    }
+        pub fn write_frame(&mut self, frame: Frame) -> Result<(), SBMPError> {
+            let (header, payload) = frame.get();
+            let data: Vec<u8> = Vec::new();
 
-    pub enum SBMPError {
-        ContentLenDiff,
-        UsizetoU32,
-        UknownContentType(u8),
-        WrongVersion,
-        LargeFrame,
-        IO(io::Error),
-    }
-
-    impl From<io::Error> for SBMPError {
-        fn from(error: io::Error) -> Self {
-            Self::IO(error)
+            // Maybe a function who returns a iter through all fields in header?
+            data.push(header.version());
+            data.push(header.content_type());
+            data.push(header.content_len().to_be());
         }
     }
+}
 
-    pub struct Header {
-        content_type: ContentType,
-        content_length: usize,
+pub mod read {
+    use super::*;
+
+    pub struct FrameReader<R: Read> {
+        reader: R,
     }
 
-    impl Header {
-        fn new(content_type: ContentType, content_length: usize) -> Self {
-            Self {
-                content_type,
-                content_length,
-            }
+    impl<R: Read> FrameReader<R> {
+        pub fn new(stream: R) -> Self {
+            Self { reader: stream }
         }
 
-        pub fn try_new(content_type: ContentType, content_length: u32) -> Result<Self, SBMPError> {
-            const KB: u32 = 1024;
-            const MB: u32 = KB * 1024;
+        pub fn read_frame(&mut self) -> Result<Frame, SBMPError> {
+            let header = self.read_header()?;
 
-            let max = match content_type {
-                ContentType::UTF8 => 4 * KB,
-                ContentType::Binary => 4 * MB,
-            };
+            let mut payload = vec![0u8; header.content_len()];
+            self.reader.read_exact(&mut payload)?;
 
-            if content_length > max {
-                return Err(SBMPError::LargeFrame);
-            }
-
-            let Ok(content_length) = usize::try_from(content_length) else {
-                return Err(SBMPError::UsizetoU32);
-            };
-
-            Ok(Header::new(content_type, content_length))
+            Frame::try_new(header, payload)
         }
 
-        pub fn content_type(&self) -> &ContentType {
-            &self.content_type
-        }
+        fn read_header(&mut self) -> Result<Header, SBMPError> {
+            // version, 1 byte
+            let mut byte = [0u8; 1];
+            self.reader.read_exact(&mut byte)?;
+            let version = byte[0];
 
-        pub fn content_len(&self) -> usize {
-            self.content_length
-        }
-    }
+            // content-type, 1 byte
+            let mut content_type = [0u8; 1];
+            self.reader.read_exact(&mut content_type)?;
+            let content_type = ContentType::try_from(content_type[0])?;
 
-    #[repr(u8)]
-    pub enum ContentType {
-        UTF8,
-        Binary,
-    }
+            // content-length, 4 bytes
+            let mut content_length = [0u8; 4];
+            self.reader.read_exact(&mut content_length)?;
+            let content_length = u32::from_be_bytes(content_length);
 
-    impl TryFrom<u8> for ContentType {
-        type Error = SBMPError;
-
-        fn try_from(content_type: u8) -> Result<Self, Self::Error> {
-            let content_type = match content_type {
-                0 => ContentType::UTF8,
-                1 => ContentType::Binary,
-                _ => return Err(SBMPError::UknownContentType(content_type)),
-            };
-
-            Ok(content_type)
+            Header::try_new(version, content_type, content_length)
         }
     }
 }
