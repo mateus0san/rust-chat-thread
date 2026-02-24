@@ -1,78 +1,110 @@
-use std::io::{self, BufReader, Read};
 // Simple Binary Messaging Protocol
 // +------------+------------+------------+----------------+
 // | 1 byte     | 1 byte     | 4 bytes    | N bytes        |
 // | version    | type       | length     | payload        |
 // +------------+------------+------------+----------------+
 
-pub enum SBMPError {
-    WrongVersion,
-    LargeFrame,
-    IO(io::Error),
-}
+pub mod read;
+pub mod write;
 
-impl From<io::Error> for SBMPError {
-    fn from(error: io::Error) -> Self {
-        Self::IO(error)
+pub mod collections {
+    use std::io;
+
+    pub const PROTOCOL_VERSION: u8 = 1;
+
+    pub struct Frame {
+        pub header: Header,
+        pub payload: Vec<u8>,
     }
-}
 
-#[repr(u8)]
-pub enum ContentType {
-    UTF8 = 0,
-}
+    impl Frame {
+        fn new(header: Header, payload: Vec<u8>) -> Self {
+            Self { header, payload }
+        }
 
-pub struct Header {
-    pub content_type: ContentType,
-    pub content_lenght: u32,
-}
-
-pub struct Frame {
-    pub header: Header,
-    pub payload: Vec<u8>,
-}
-
-pub struct FrameReader<R: Read> {
-    reader: BufReader<R>,
-}
-
-
-impl<R: Read> FrameReader<R> {
-    pub fn new(stream: R) -> Self {
-        Self {
-            reader: BufReader::new(stream),
+        pub fn try_new(header: Header, payload: Vec<u8>) -> Result<Self, SBMPError> {
+            if header.content_length == payload.len() {
+                Ok(Frame::new(header, payload))
+            } else {
+                Err(SBMPError::ContentLenDiff)
+            }
         }
     }
 
-    pub fn read_frame(&mut self) -> io::Result<Vec<u8>> {
-        let len = self.read_header()?;
-
-        if len > 8 * 1024 {
-            return Err(io::Error::new(
-                io::ErrorKind::InvalidData,
-                "Frame too large",
-            ));
-        }
-
-        let mut frame = vec![0u8; len as usize];
-
-        self.reader.read_exact(&mut frame)?;
-
-        Ok(frame)
+    pub enum SBMPError {
+        ContentLenDiff,
+        UsizetoU32,
+        UknownContentType(u8),
+        WrongVersion,
+        LargeFrame,
+        IO(io::Error),
     }
 
-    fn read_header(&mut self) -> Result<Header, SBMPError> {
-        // version, 1 byte
-        let mut version = [0u8; 1];
-        self.reader.read_exact(&mut version)?;
-        if version[0] == 
-        // content-type, 1 byte
-        let mut version = [0u8; 1];
-        self.reader.read_exact(&mut version)?;
+    impl From<io::Error> for SBMPError {
+        fn from(error: io::Error) -> Self {
+            Self::IO(error)
+        }
+    }
 
-        //
-        let mut header = [0u8; 4];
+    pub struct Header {
+        content_type: ContentType,
+        content_length: usize,
+    }
 
-        Ok(u32::from_be_bytes(header))
+    impl Header {
+        fn new(content_type: ContentType, content_length: usize) -> Self {
+            Self {
+                content_type,
+                content_length,
+            }
+        }
+
+        pub fn try_new(content_type: ContentType, content_length: u32) -> Result<Self, SBMPError> {
+            const KB: u32 = 1024;
+            const MB: u32 = KB * 1024;
+
+            let max = match content_type {
+                ContentType::UTF8 => 4 * KB,
+                ContentType::Binary => 4 * MB,
+            };
+
+            if content_length > max {
+                return Err(SBMPError::LargeFrame);
+            }
+
+            let Ok(content_length) = usize::try_from(content_length) else {
+                return Err(SBMPError::UsizetoU32);
+            };
+
+            Ok(Header::new(content_type, content_length))
+        }
+
+        pub fn content_type(&self) -> &ContentType {
+            &self.content_type
+        }
+
+        pub fn content_len(&self) -> usize {
+            self.content_length
+        }
+    }
+
+    #[repr(u8)]
+    pub enum ContentType {
+        UTF8,
+        Binary,
+    }
+
+    impl TryFrom<u8> for ContentType {
+        type Error = SBMPError;
+
+        fn try_from(content_type: u8) -> Result<Self, Self::Error> {
+            let content_type = match content_type {
+                0 => ContentType::UTF8,
+                1 => ContentType::Binary,
+                _ => return Err(SBMPError::UknownContentType(content_type)),
+            };
+
+            Ok(content_type)
+        }
     }
 }
