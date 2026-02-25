@@ -1,20 +1,31 @@
 use std::{net::TcpStream, thread};
 
 use sbmp::read::FrameReader;
-use sbmp::write::FrameWriter;
+use sbmp::sbmp::ContentType;
+use sbmp::write::{FrameWriter, build_frame};
 use std::io;
 
 fn main() {
     let stream = TcpStream::connect("0.0.0.0:1337").expect("Could not connect to the server");
     let reader = stream.try_clone().expect("Could not clone stream");
 
-    let reader = FrameReader::new(reader);
-    let writer = FrameWriter::new(stream);
+    let mut reader = FrameReader::new(reader);
+    let mut writer = FrameWriter::new(stream);
 
     thread::spawn(move || {
-        let msg = new_message();
-        msg.as_bytes()
+        loop {
+            let msg = new_message();
+            let frame = build_frame(ContentType::UTF8, msg.as_bytes())
+                .expect("I need to remove this expect later");
+            writer.write_frame(frame).expect("remove this expect later");
+        }
     });
+
+    loop {
+        let frame = reader.read_frame().expect("remove this expect later");
+        let payload = String::from_utf8(frame.get_payload()).expect("remove this expect later");
+        println!("{payload}");
+    }
 }
 
 fn new_message() -> String {

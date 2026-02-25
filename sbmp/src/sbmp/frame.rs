@@ -21,4 +21,8 @@ impl Frame {
     pub fn get(&self) -> (&Header, &Vec<u8>) {
         (&self.header, &self.payload)
     }
+
+    pub fn get_payload(self) -> Vec<u8> {
+        self.payload
+    }
 }

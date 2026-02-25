@@ -1,12 +1,12 @@
 use std::{
-    collections::{hash_map::Entry, HashMap},
-    io,
+    collections::{HashMap, hash_map::Entry},
     net::{SocketAddr, TcpListener, TcpStream},
     sync::mpsc::{self, Receiver},
     thread,
 };
 
-use sbmp::FrameReader;
+use sbmp::read::FrameReader;
+use sbmp::sbmp::SBMPError;
 use server::{Client, ConnectionEnd, Message};
 
 fn main() {
@@ -69,7 +69,7 @@ fn new_message(msg: String, clients: &mut HashMap<SocketAddr, Client>) {
 fn handle_connection(
     stream: TcpStream,
     sender: mpsc::Sender<Message>,
-) -> Result<ConnectionEnd, io::Error> {
+) -> Result<ConnectionEnd, SBMPError> {
     let reader = stream.try_clone()?;
 
     let client = Client::try_new(stream)?;
@@ -82,14 +82,13 @@ fn handle_connection(
     let mut buffer = FrameReader::new(reader);
 
     let result = loop {
-        let content = match buffer.read_frame() {
+        let frame = match buffer.read_frame() {
             Ok(s) => s,
             Err(e) => break Err(e),
         };
 
-        // remove the unwrap later
-        let content = content.try_into().unwrap();
-        if sender.send(Message::Broadcast(content)).is_err() {
+        let client_message = String::from_utf8(frame.get_payload()).expect("remove this later");
+        if sender.send(Message::Broadcast(client_message)).is_err() {
             break Ok(ConnectionEnd::ReceiverDropped);
         }
     };

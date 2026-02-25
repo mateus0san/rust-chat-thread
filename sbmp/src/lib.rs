@@ -30,18 +30,17 @@ pub mod write {
 
             Ok(())
         }
-
-        pub fn build_frame(
-            content_type: ContentType,
-            payload: Vec<u8>,
-        ) -> Result<Frame, SBMPError> {
-            let Ok(content_len) = u32::try_from(payload.len()) else {
-                return Err(SBMPError::LengthConversion);
-            };
-
-            let header = Header::try_new(sbmp::PROTOCOL_VERSION, content_type, content_len)?;
-            Frame::try_new(header, payload)
+        pub fn get_ref(&self) -> &W {
+            &self.writer
         }
+    }
+    pub fn build_frame(content_type: ContentType, payload: &[u8]) -> Result<Frame, SBMPError> {
+        let Ok(content_len) = u32::try_from(payload.len()) else {
+            return Err(SBMPError::LengthConversion);
+        };
+
+        let header = Header::try_new(sbmp::PROTOCOL_VERSION, content_type, content_len)?;
+        Frame::try_new(header, payload.to_vec())
     }
 }
 

@@ -10,6 +10,7 @@ pub use content::ContentType;
 pub use frame::Frame;
 pub use header::Header;
 
+#[derive(Debug)]
 pub enum SBMPError {
     ContentLenDiff,
     LengthConversion,
