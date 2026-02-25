@@ -1,12 +1,12 @@
 use std::{
     collections::{HashMap, hash_map::Entry},
-    net::{SocketAddr, TcpListener, TcpStream},
+    net::{TcpListener, TcpStream},
     sync::mpsc::{self, Receiver, Sender},
     thread,
 };
 
 use sbmp::read::FrameReader;
-use sbmp::{ContentType, SBMPError};
+use sbmp::{ContentType, Frame, SBMPError};
 use server::{Client, ConnectionEnd, Message};
 
 fn main() {
@@ -34,23 +34,24 @@ fn server(receiver: Receiver<Message>) {
     for msg in receiver {
         match msg {
             Message::Broadcast(msg) => new_message(msg, &mut clients),
-            Message::Drop(ip) => {
-                clients.remove(&ip);
+            Message::Drop(username) => {
+                clients.remove(&username);
             }
             Message::NewClient(client) => new_client(&mut clients, client),
         }
     }
 }
 
-fn new_message(msg: String, clients: &mut HashMap<SocketAddr, Client>) {
-    let _removed_clients: HashMap<SocketAddr, Client> =
+fn new_message(msg: String, clients: &mut HashMap<String, Client>) {
+    let _removed_clients: HashMap<String, Client> =
         clients.extract_if(|_k, v| v.write(&msg).is_err()).collect();
 }
 
-fn new_client(clients: &mut HashMap<SocketAddr, Client>, client: Client) {
-    match clients.entry(client.ip()) {
+fn new_client(clients: &mut HashMap<String, Client>, mut client: Client) {
+    match clients.entry(client.username().to_string()) {
         Entry::Occupied(_) => {
-            eprintln!("INFO: Ip address of new client is already on the server.");
+            let err = "INFO: This username is already on the server";
+            let _ = client.write(err);
         }
         Entry::Vacant(e) => {
             eprintln!("INFO: New client {}", client.ip());
@@ -79,17 +80,15 @@ fn handle_connection(
     let Some(client) = login(stream, &mut reader) else {
         return Ok(ConnectionEnd::Normal);
     };
-
-    let username = client.username();
+    let username = client.username().to_string();
 
     if sender.send(Message::NewClient(client)).is_err() {
         return Ok(ConnectionEnd::ReceiverDropped);
     };
 
     let result = loop {
-        let frame = match buffer.read_frame() {
-            Ok(s) => s,
-            Err(e) => break Err(e),
+        let Some(frame) = read(&mut reader, &username) else {
+            break Ok(ConnectionEnd::Normal);
         };
 
         let client_message = String::from_utf8(frame.get_payload()).expect("remove this later");
@@ -98,22 +97,21 @@ fn handle_connection(
         }
     };
 
-    let _ = sender.send(Message::Drop(ip));
+    let _ = sender.send(Message::Drop(username));
     result
 }
 
-fn read_messages(reader: &mut FrameReader<TcpStream>, username: &str) -> Option<String> {
-    let frame = reader.read_frame() {
+fn read(reader: &mut FrameReader<TcpStream>, username: &str) -> Option<Frame> {
+    let frame = match reader.read_frame() {
         Ok(frame) => frame,
-        Err(e) => { eprintln!("ERROR: read_messages from {username}: {:#?}", e); return None;}
+        Err(e) => {
+            eprintln!("ERROR: read_messages from {username}: {:#?}", e);
+            return None;
+        }
     };
 
-    if frame.get_header().content_type() != ContentType::UTF8 {
-        return None;
-    }
-
-    let 
-} 
+    Some(frame)
+}
 
 fn login(stream: TcpStream, reader: &mut FrameReader<TcpStream>) -> Option<Client> {
     let mut client = match Client::try_new(stream) {
@@ -148,14 +146,14 @@ fn login(stream: TcpStream, reader: &mut FrameReader<TcpStream>) -> Option<Clien
         Ok(s) => s,
         Err(e) => {
             eprintln!("ERROR: login 'from_utf8' {:#?}", e);
-            client.write("Username invalid: bad encoding");
+            let _ = client.write("Username invalid: bad encoding");
             return None;
         }
     };
 
-
     if client.set_username(username).is_none() {
-        client.write("Username should have less than 32 char");
+        let _ = client.write("Username should have less than 32 chars");
+        return None;
     };
 
     Some(client)

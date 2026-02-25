@@ -7,7 +7,7 @@ use std::time::Duration;
 pub enum Message {
     Broadcast(String),
     NewClient(Client),
-    Drop(SocketAddr),
+    Drop(String),
 }
 
 pub struct Client {
@@ -56,7 +56,7 @@ impl Client {
     }
 
     pub fn set_username(&mut self, username: String) -> Option<&str> {
-        if username.len() < 32 {
+        if username.len() >= 32 {
             return None;
         }
 
