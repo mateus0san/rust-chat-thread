@@ -70,6 +70,11 @@ fn client(stream: TcpStream, sender: Sender<Message>) {
     }
 }
 
+struct ClientMsg {
+    id: String,
+    frame: Frame,
+}
+
 fn handle_connection(
     stream: TcpStream,
     sender: mpsc::Sender<Message>,
@@ -91,7 +96,10 @@ fn handle_connection(
             break Ok(ConnectionEnd::Normal);
         };
 
-        let client_message = String::from_utf8(frame.get_payload()).expect("remove this later");
+        let Some(client_message) = ClientMsg:: else {
+            break Ok(ConnectionEnd::Normal);
+        };
+
         if sender.send(Message::Broadcast(client_message)).is_err() {
             break Ok(ConnectionEnd::ReceiverDropped);
         }
